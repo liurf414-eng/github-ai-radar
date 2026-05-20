@@ -151,14 +151,27 @@ def get_new_fast_growing_repos():
 def format_repo_block(r, index, show_created=False):
     """生成单个项目的展示块，包含 AI 摘要"""
     lines = []
-    stars_info = f'  `{r["today_stars"]}`' if r.get('today_stars') else ''
-    lang_info = f'  `{r["language"]}`' if r.get('language') else ''
-    lines.append(f'**{index}. [{r["name"]}]({r["url"]})**{lang_info}{stars_info}')
-    if show_created:
-        lines.append(f'创建于 {r["created_at"]}  ⭐ {r["stars"]:,}')
 
+    # 第一行：项目名（单独一行）
+    lines.append(f'**{index}. [{r["name"]}]({r["url"]})**')
+
+    # 第二行：语言 · 星星（单独一行）
+    parts = []
+    if r.get('language'):
+        parts.append(f'`{r["language"]}`')
+    if show_created:
+        parts.append(f'创建于 {r["created_at"]}')
+        parts.append(f'⭐ {r["stars"]:,}')
+    elif r.get('today_stars'):
+        parts.append(f'今日 ⭐ {r["today_stars"]}')
+    if parts:
+        lines.append(' · '.join(parts))
+
+    lines.append('')  # 空行，摘要前留呼吸感
+
+    # 摘要：每条单独一行，行间留空
     summary = generate_summary(r['name'], r.get('description', ''))
-    time.sleep(0.5)  # 避免触发速率限制
+    time.sleep(0.5)
 
     if summary:
         summary_lines = summary.strip().splitlines()
@@ -166,9 +179,12 @@ def format_repo_block(r, index, show_created=False):
         for label, line in zip(labels, summary_lines):
             if line.strip():
                 lines.append(f'{label}：{line.strip()}')
+                lines.append('')
     elif r.get('description'):
         lines.append(f'> {r["description"][:120]}')
+        lines.append('')
 
+    lines.append('---')  # 项目间分隔线
     lines.append('')
     return lines
 
