@@ -1,10 +1,12 @@
 import os
+import time
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 
 SERVERCHAN_KEY = os.environ.get('SERVERCHAN_KEY', '')
 GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN', '')
+DEEPSEEK_API_KEY = os.environ.get('DEEPSEEK_API_KEY', '')
 
 AI_KEYWORDS = [
     'llm', 'gpt', 'chatgpt', 'claude', 'gemini', 'ai', 'machine learning',
@@ -13,6 +15,40 @@ AI_KEYWORDS = [
     'language model', 'generative', 'openai', 'anthropic', 'ollama',
     'stable diffusion', 'copilot', 'vision model', 'mcp', 'vllm', 'lora',
 ]
+
+
+def generate_summary(name, description):
+    """调用 DeepSeek API 生成三行中文摘要"""
+    if not DEEPSEEK_API_KEY:
+        return None
+    prompt = (
+        f'GitHub项目名：{name}\n'
+        f'官方描述：{description or "无"}\n\n'
+        '请用中文简洁回答以下三个问题，每个问题一句话，直接输出三行，不加编号和标题：\n'
+        '1. 这个项目是干嘛的？\n'
+        '2. 适合谁用？\n'
+        '3. 为什么最近火了？'
+    )
+    try:
+        resp = requests.post(
+            'https://api.deepseek.com/chat/completions',
+            headers={
+                'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
+                'Content-Type': 'application/json',
+            },
+            json={
+                'model': 'deepseek-chat',
+                'messages': [{'role': 'user', 'content': prompt}],
+                'max_tokens': 200,
+                'temperature': 0.3,
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+        return resp.json()['choices'][0]['message']['content'].strip()
+    except Exception as e:
+        print(f'[DeepSeek] {name} 摘要生成失败: {e}')
+        return None
 
 
 def is_ai_related(text):
@@ -112,6 +148,31 @@ def get_new_fast_growing_repos():
     return repos[:8]
 
 
+def format_repo_block(r, index, show_created=False):
+    """生成单个项目的展示块，包含 AI 摘要"""
+    lines = []
+    stars_info = f'  `{r["today_stars"]}`' if r.get('today_stars') else ''
+    lang_info = f'  `{r["language"]}`' if r.get('language') else ''
+    lines.append(f'**{index}. [{r["name"]}]({r["url"]})**{lang_info}{stars_info}')
+    if show_created:
+        lines.append(f'创建于 {r["created_at"]}  ⭐ {r["stars"]:,}')
+
+    summary = generate_summary(r['name'], r.get('description', ''))
+    time.sleep(0.5)  # 避免触发速率限制
+
+    if summary:
+        summary_lines = summary.strip().splitlines()
+        labels = ['📌 是什么', '👤 适合谁', '🔥 为何火']
+        for label, line in zip(labels, summary_lines):
+            if line.strip():
+                lines.append(f'{label}：{line.strip()}')
+    elif r.get('description'):
+        lines.append(f'> {r["description"][:120]}')
+
+    lines.append('')
+    return lines
+
+
 def format_message(trending, new_repos):
     today = datetime.now().strftime('%Y-%m-%d')
     lines = [f'# AI雷达日报 {today}', '']
@@ -119,23 +180,14 @@ def format_message(trending, new_repos):
     lines += ['## 🔥 今日 GitHub AI 趋势榜', '']
     if trending:
         for i, r in enumerate(trending, 1):
-            stars_info = f'  `{r["today_stars"]}`' if r['today_stars'] else ''
-            lang_info = f'  `{r["language"]}`' if r['language'] else ''
-            lines.append(f'**{i}. [{r["name"]}]({r["url"]})**{lang_info}{stars_info}')
-            if r['description']:
-                lines.append(f'> {r["description"][:120]}')
-            lines.append('')
+            lines += format_repo_block(r, i)
     else:
         lines += ['暂无数据（可能是网络问题）', '']
 
     lines += ['## 🚀 近两周新冒头的 AI 项目', '']
     if new_repos:
         for i, r in enumerate(new_repos, 1):
-            lines.append(f'**{i}. [{r["name"]}]({r["url"]})** ⭐ {r["stars"]:,}')
-            lines.append(f'创建于 {r["created_at"]}  `{r["language"]}`')
-            if r['description']:
-                lines.append(f'> {r["description"][:120]}')
-            lines.append('')
+            lines += format_repo_block(r, i, show_created=True)
     else:
         lines += ['暂无数据', '']
 
