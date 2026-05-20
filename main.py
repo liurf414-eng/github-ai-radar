@@ -233,7 +233,8 @@ def format_message(trending, new_repos, all_trending):
 
     lines += ['## 🌐 GitHub 今日全站热榜 Top 10', '']
     if all_trending:
-        lines += format_trending_simple(all_trending)
+        for i, r in enumerate(all_trending, 1):
+            lines += format_repo_block(r, i)
     else:
         lines += ['暂无数据', '']
 
