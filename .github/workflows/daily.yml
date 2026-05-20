@@ -2,7 +2,7 @@ name: AI雷达每日推送
 
 on:
   schedule:
-    - cron: '0 0 * * *'  # UTC 00:00 = 北京时间 08:00
+    - cron: '0 10 * * *'  # UTC 10:00 = 北京时间 18:00
   workflow_dispatch:      # 允许在 GitHub 网页上手动触发，方便测试
 
 jobs:
