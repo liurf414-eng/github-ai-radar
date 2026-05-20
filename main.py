@@ -56,8 +56,8 @@ def is_ai_related(text):
     return any(kw in t for kw in AI_KEYWORDS)
 
 
-def get_trending_ai_repos():
-    """抓取 GitHub Trending，筛选 AI 相关项目"""
+def scrape_trending(ai_only=True):
+    """抓取 GitHub Trending，ai_only=True 时只返回 AI 相关项目"""
     url = 'https://github.com/trending?since=daily'
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     try:
@@ -87,17 +87,27 @@ def get_trending_ai_repos():
         today_tag = article.select_one('span.d-inline-block.float-sm-right')
         today_stars = today_tag.get_text(strip=True) if today_tag else ''
 
-        if is_ai_related(full_name + ' ' + description):
-            repos.append({
-                'name': full_name,
-                'description': description,
-                'language': language,
-                'stars': stars,
-                'today_stars': today_stars,
-                'url': f'https://github.com/{full_name}',
-            })
+        if ai_only and not is_ai_related(full_name + ' ' + description):
+            continue
 
-    return repos[:8]
+        repos.append({
+            'name': full_name,
+            'description': description,
+            'language': language,
+            'stars': stars,
+            'today_stars': today_stars,
+            'url': f'https://github.com/{full_name}',
+        })
+
+    return repos
+
+
+def get_trending_ai_repos():
+    return scrape_trending(ai_only=True)[:8]
+
+
+def get_trending_all_repos():
+    return scrape_trending(ai_only=False)[:10]
 
 
 def get_new_fast_growing_repos():
@@ -189,7 +199,21 @@ def format_repo_block(r, index, show_created=False):
     return lines
 
 
-def format_message(trending, new_repos):
+def format_trending_simple(repos):
+    """全站趋势榜：简洁展示，不生成 AI 摘要"""
+    lines = []
+    for i, r in enumerate(repos, 1):
+        lang_info = f'`{r["language"]}` · ' if r.get('language') else ''
+        stars_info = f'今日 ⭐ {r["today_stars"]}' if r.get('today_stars') else ''
+        lines.append(f'**{i}. [{r["name"]}]({r["url"]})**')
+        lines.append(f'{lang_info}{stars_info}')
+        if r.get('description'):
+            lines.append(f'> {r["description"][:80]}')
+        lines.append('')
+    return lines
+
+
+def format_message(trending, new_repos, all_trending):
     today = datetime.now().strftime('%Y-%m-%d')
     lines = [f'# AI雷达日报 {today}', '']
 
@@ -204,6 +228,12 @@ def format_message(trending, new_repos):
     if new_repos:
         for i, r in enumerate(new_repos, 1):
             lines += format_repo_block(r, i, show_created=True)
+    else:
+        lines += ['暂无数据', '']
+
+    lines += ['## 🌐 GitHub 今日全站热榜 Top 10', '']
+    if all_trending:
+        lines += format_trending_simple(all_trending)
     else:
         lines += ['暂无数据', '']
 
@@ -239,7 +269,11 @@ if __name__ == '__main__':
     new_repos = get_new_fast_growing_repos()
     print(f'   找到 {len(new_repos)} 个新项目')
 
-    content = format_message(trending, new_repos)
+    print('🔍 正在获取 GitHub 全站趋势榜...')
+    all_trending = get_trending_all_repos()
+    print(f'   找到 {len(all_trending)} 个全站趋势项目')
+
+    content = format_message(trending, new_repos, all_trending)
     today = datetime.now().strftime('%m/%d')
     total = len(trending) + len(new_repos)
     send_to_wechat(f'AI雷达 {today} | 精选 {total} 个项目', content)
